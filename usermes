@@ -1,0 +1,188 @@
+/*
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+::																		                                  ::
+::	На виндусе данная программа работать будет не корректно,			      ::
+::	а именно - не придумал как разграничить файлы разных пользователей	::
+::	при работе  из одного каталога, - так как программа					        ::
+::	ищет уже создававшиеся файлы по сигнатуре прав доступа к ним.		    ::
+::																		                                  ::
+::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
+*/
+
+
+#include <fstream>
+#include <iostream>
+#include <string>
+#include <filesystem>
+
+class User {
+	std::string _name;
+	std::string _login;
+	std::string _pass;
+
+public:
+	User() :_name(), _login(), _pass() {};
+	User(std::string name, std::string login, std::string pass) :_name(name), _login(login), _pass(pass) {}
+
+	friend std::fstream& operator >>(std::fstream& is, User& obj);
+	friend std::ostream& operator <<(std::ostream& os, const User& obj);
+};
+std::fstream& operator >>(std::fstream& is, User& obj)
+{
+	is >> obj._name;
+	is >> obj._login;
+	is >> obj._pass;
+	return is;
+};
+std::ostream& operator <<(std::ostream& os, const User& obj)
+{
+	os << obj._name;
+	os << '\n';
+	os << obj._login;
+	os << '\n';
+	os << obj._pass;
+	return os;
+};
+
+class Message {
+	std::string _text;
+	std::string _sender;
+	std::string _receiver;
+
+public:
+	Message() :_text(), _sender(), _receiver() {};
+	Message(std::string text, std::string sender, std::string receiver) :_text(text), _sender(sender), _receiver(receiver) {}
+
+	friend std::fstream& operator >>(std::fstream& is, Message& obj);
+	friend std::ostream& operator <<(std::ostream& os, Message& obj);
+};
+std::fstream& operator >>(std::fstream& is, Message& obj)
+{
+	std::getline(is, obj._text);
+	is >> obj._sender;
+	is >> obj._receiver;
+	return is;
+};
+std::ostream& operator <<(std::ostream& os, Message& obj)
+{
+	os << obj._text;
+	os << '\n';
+	os << obj._sender;
+	os << '\n';
+	os << obj._receiver;
+	return os;
+};
+
+char delimiting_character(const std::string& str) {
+	for (const auto& ch : str)
+	{
+		if (ch == '/') {
+			return '/';
+		}
+		else if (ch == '\\') {
+			return '\\';
+		}
+	}
+};
+/*	создает файл для текущего пользователя и возвращает его имя, если его не существовало
+	или возращает имя файла, на который у пользователя есть права для чтения и записи	*/
+std::string creop_file(const std::string& ext) {
+	std::filesystem::path path = std::filesystem::current_path();
+	bool is_file_exists = false;
+	std::string filename;
+	/*	проверяем создавались файлы данным пользователем или еще нет;
+		возвращает имя файла, если таковой имеется в системе	*/
+	for (const auto& entry : std::filesystem::directory_iterator(path)) {
+		//ищем файлы по расширениям, которые создает эта программа
+		if (entry.path().extension().string() == ext) {
+			//ищем файл данного пользователя по возможности доступа к файлу
+			std::ifstream check_write_perms(entry.path());
+			if (check_write_perms.is_open()) {
+				is_file_exists = true;
+				std::cout << entry.path().string() << "' is openning...\n";
+				return entry.path().string();
+			}
+		}
+	}
+	//создание файла, если еще не создавались
+	while (!is_file_exists) {
+		std::cout << "input filename without extension: ";
+		std::cin >> filename;
+		filename = path.string() + delimiting_character(path.string()) + filename;
+		std::filesystem::directory_entry de{ filename };
+		if (de.exists()) {
+			std::cout << "file with such name already exists, please chose another name\n";
+		}
+		else {
+			std::ofstream usr(filename + ".u");
+			std::filesystem::permissions(filename + ".u", std::filesystem::perms::all & std::filesystem::perms::owner_all);
+			usr.close();
+			std::ofstream msg(filename + ".m");
+			std::filesystem::permissions(filename + ".m", std::filesystem::perms::all & std::filesystem::perms::owner_all);
+			msg.close();
+			return creop_file(ext);
+		}
+	}
+};
+
+void ufile(const std::string& filename) {
+	User user;
+	std::fstream curent_file (filename, std::ios::in | std::ios::out);
+	curent_file >> user;
+	std::cout << "file's content:\n";
+	std::cout << user << std::endl;
+	std::cout << "rewrite? y/n\n";
+	char choice;
+	std::cin >> choice;
+	curent_file.close();
+	if (choice == 'y') {
+		std::cout << "input:\n'name'\n'login'\n'pass'\n";
+		std::string name, login, pass;
+		std::cin >> name >> login >> pass;
+		std::ofstream curent_file(filename, std::ios::in | std::ios::out | std::ios::trunc);
+		User new_user(name, login, pass);
+		curent_file << new_user;
+		curent_file.close();
+	}
+}
+
+void mfile(const std::string& filename) {
+	Message message;
+	std::fstream curent_file (filename, std::ios::in | std::ios::out);
+	curent_file >> message;
+	std::cout << "file's content:\n";
+	std::cout << message << std::endl;
+	std::cout << "rewrite? y/n\n";
+	char choice;
+	std::cin >> choice;
+	curent_file.close();
+	if (choice == 'y') {
+		std::cout << "input:\n'text'\n'sender'\n'receiver'\n";
+		std::string text, sender, receiver;
+		std::cin >> text >> sender >> receiver;
+		std::ofstream curent_file(filename, std::ios::in | std::ios::out);
+		Message new_message(text, sender, receiver);
+		curent_file << new_message;
+		curent_file.close();
+	}
+}
+
+
+int main() {
+	while (true)
+	{		
+		std::cout << "add message('m') file, user('u') file or quit('q')?\n";
+		std::string choice;
+		std::cin >> choice;
+		if (choice == "m" || choice == "u") {
+			(choice == "u") ? ufile(creop_file( "." + choice )) : mfile(creop_file( "." + choice ));
+		}
+		else if (choice == "q") {
+			return 0;
+		}
+		else {
+			std::cout << "wrong command\n";
+		}
+	}
+}
+	
